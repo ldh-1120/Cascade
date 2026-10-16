@@ -210,6 +210,10 @@ public final class SkeletonPose {
     }
 
     public void solveTwoBoneIk(String rootName, String middleName, String endName, Vector3fc target, Vector3fc pole) {
+        solveTwoBoneIk(rootName, middleName, endName, target, pole, 0.0f, 180.0f);
+    }
+
+    public void solveTwoBoneIk(String rootName, String middleName, String endName, Vector3fc target, Vector3fc pole, float minBendDegrees, float maxBendDegrees) {
         int rootIndex = skeleton.requireIndex(rootName);
         int middleIndex = skeleton.requireIndex(middleName);
         int endIndex = skeleton.requireIndex(endName);
@@ -219,6 +223,9 @@ public final class SkeletonPose {
 
         if (target == null || pole == null)
             throw new IllegalArgumentException("IK target and pole are required");
+
+        if (!Float.isFinite(minBendDegrees) || !Float.isFinite(maxBendDegrees) || minBendDegrees < 0.0f || maxBendDegrees > 180.0f || minBendDegrees > maxBendDegrees)
+            throw new IllegalArgumentException("Invalid IK bend limits");
 
         if (!Float.isFinite(target.x()) || !Float.isFinite(target.y()) || !Float.isFinite(target.z()) || !Float.isFinite(pole.x()) || !Float.isFinite(pole.y()) || !Float.isFinite(pole.z()))
             throw new IllegalArgumentException("Invalid IK coordinates");
@@ -254,8 +261,14 @@ public final class SkeletonPose {
 
         direction.normalize();
 
-        float minimum = Math.abs(upperLength - lowerLength) + 0.0001f;
-        float maximum = upperLength + lowerLength - 0.0001f;
+        float physicalMin = Math.abs(upperLength - lowerLength) + 0.0001f;
+        float physicalMax = upperLength + lowerLength - 0.0001f;
+
+        float limitedMin = (float) Math.sqrt(Math.max(0.0, upperLength * upperLength + lowerLength * lowerLength + 2.0 * upperLength * lowerLength * Math.cos(Math.toRadians(maxBendDegrees))));
+        float limitedMax = (float) Math.sqrt(Math.max(0.0, upperLength * upperLength + lowerLength * lowerLength + 2.0 * upperLength * lowerLength * Math.cos(Math.toRadians(minBendDegrees))));
+
+        float minimum = Math.max(physicalMin, Math.min(physicalMax, limitedMin));
+        float maximum = Math.max(minimum, Math.max(physicalMin, Math.min(physicalMax, limitedMax)));
 
         float reach = Math.max(minimum, Math.min(distance, maximum));
         Vector3f reachableTarget = new Vector3f(root).fma(reach, direction);
