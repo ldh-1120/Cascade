@@ -307,4 +307,14 @@ public final class SkeletonPose {
 
         dirty = true;
     }
+
+    public void addTranslation(String boneName, float x, float y, float z) {
+        if (!Float.isFinite(x) || !Float.isFinite(y) || !Float.isFinite(z))
+            throw new IllegalArgumentException("Invalid translation");
+
+        int index = skeleton.requireIndex(boneName);
+        translations[index].add(x, y, z);
+
+        dirty = true;
+    }
 }
