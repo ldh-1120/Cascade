@@ -91,6 +91,26 @@ public final class SkeletonPose {
         return modelMatrices[index].getTranslation(new Vector3f());
     }
 
+    public void blendFrom(SkeletonPose from, SkeletonPose to, float weight) {
+        if (from.skeleton != skeleton || to.skeleton != skeleton)
+            throw new IllegalArgumentException("Skeleton mismatch");
+
+        if (this == from || this == to)
+            throw new IllegalArgumentException("Output pose must be separate");
+
+        if (!Float.isFinite(weight))
+            throw new IllegalArgumentException("Invalid blend weight");
+
+        float alpha = Math.max(0.0f, Math.min(1.0f, weight));
+        for (int i = 0; i < skeleton.boneCount(); i++) {
+            translations[i].set(from.translations[i]).lerp(to.translations[i], alpha);
+            rotations[i].set(from.rotations[i]).slerp(to.rotations[i], alpha).normalize();
+            scales[i].set(from.scales[i]).lerp(to.scales[i], alpha);
+        }
+
+        dirty = true;
+    }
+
     private void updateMatrices() {
         if (!dirty)
             return;
