@@ -11,5 +11,6 @@ public final class CascadeClientEvents {
     @SubscribeEvent
     public static void registerReloadListeners(RegisterClientReloadListenersEvent event) {
         event.registerReloadListener(BedrockGeometryLoader.INSTANCE);
+        event.registerReloadListener(BedrockAnimationLoader.INSTANCE);
     }
 }
