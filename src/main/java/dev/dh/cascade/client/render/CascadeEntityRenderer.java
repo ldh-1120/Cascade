@@ -59,7 +59,7 @@ public class CascadeEntityRenderer<T extends Entity & MotionEntity> extends Enti
             try {
                 stack.mulPose(Axis.YP.rotationDegrees(180.0f - entityYaw));
 
-                VertexConsumer consumer = buffers.getBuffer(RenderType.entityCutoutNoCull(texture));
+                VertexConsumer consumer = buffers.getBuffer(RenderType.entityCutoutNoCull(getTextureLocation(entity)));
                 model.render(stack, consumer, packedLight, pose);
             } finally {
                 stack.popPose();
