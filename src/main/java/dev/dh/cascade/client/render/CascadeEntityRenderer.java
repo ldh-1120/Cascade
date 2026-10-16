@@ -62,6 +62,8 @@ public class CascadeEntityRenderer<T extends Entity & MotionEntity> extends Enti
 
                 VertexConsumer consumer = buffers.getBuffer(RenderType.entityCutoutNoCull(getTextureLocation(entity)));
                 model.render(stack, consumer, packedLight, pose);
+
+                renderPoseOverlay(entity, entityYaw, partialTick, stack, buffers, pose);
             } finally {
                 stack.popPose();
             }
@@ -71,6 +73,8 @@ public class CascadeEntityRenderer<T extends Entity & MotionEntity> extends Enti
     }
 
     protected void modifyPose(T entity, float entityYaw, float partialTick, SkeletonPose pose) { }
+
+    protected void renderPoseOverlay(T entity, float entityYaw, float partialTick, PoseStack stack, MultiBufferSource buffers, SkeletonPose pose) { }
 
     private void updateResources() {
         BedrockGeometryLoader geometryLoader = BedrockGeometryLoader.INSTANCE;
