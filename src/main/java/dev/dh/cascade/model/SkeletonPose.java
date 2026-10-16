@@ -300,4 +300,11 @@ public final class SkeletonPose {
 
         dirty = true;
     }
+
+    public void rotateLocalDegrees(String boneName, float x, float y, float z) {
+        int index = skeleton.requireIndex(boneName);
+        rotations[index].rotateXYZ((float) Math.toRadians(x), (float) Math.toRadians(y), (float) Math.toRadians(z)).normalize();
+
+        dirty = true;
+    }
 }
