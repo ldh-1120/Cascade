@@ -8,12 +8,15 @@ import java.util.List;
 
 public final class AnimationSampler {
     public static void apply(AnimationClip animation, SkeletonPose pose, float timeSeconds) {
+        pose.reset();
+        applyInto(animation, pose, timeSeconds);
+    }
+
+    public static void applyInto(AnimationClip animation, SkeletonPose pose, float timeSeconds) {
         if (!Float.isFinite(timeSeconds))
             throw new IllegalArgumentException("Invalid animation time");
 
         float time = normalizeTime(animation, timeSeconds);
-        pose.reset();
-
         for (AnimationClip.BoneTrack track : animation.tracks()) {
             String name = track.name();
             if (!track.position().isEmpty()) {

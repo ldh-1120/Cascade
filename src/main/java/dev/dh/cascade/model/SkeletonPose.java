@@ -1,5 +1,6 @@
 package dev.dh.cascade.model;
 
+import dev.dh.cascade.animation.BoneMask;
 import org.joml.Matrix4f;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
@@ -142,5 +143,68 @@ public final class SkeletonPose {
 
     public Skeleton skeleton() {
         return skeleton;
+    }
+
+    public void copyFrom(SkeletonPose source) {
+        if (source.skeleton != skeleton)
+            throw new IllegalArgumentException("Skeleton mismatch");
+
+        if (source == this)
+            return;
+
+        for (int i = 0; i < skeleton.boneCount(); i++) {
+            translations[i].set(source.translations[i]);
+            rotations[i].set(source.rotations[i]);
+            scales[i].set(source.scales[i]);
+        }
+
+        dirty = true;
+    }
+
+    public void applyMaskedOverride(SkeletonPose overlay, BoneMask.Bound mask, float weight) {
+        validateLayer(overlay, mask, weight);
+
+        for (int i = 0; i < skeleton.boneCount(); i++) {
+            float alpha = weight * mask.weight(i);
+            if (alpha <= 0.0f)
+                continue;
+
+            translations[i].lerp(overlay.translations[i], alpha);
+            rotations[i].slerp(overlay.rotations[i], alpha).normalize();
+            scales[i].lerp(overlay.scales[i], alpha);
+        }
+
+        dirty = true;
+    }
+
+    public void applyMaskedAdditive(SkeletonPose delta, BoneMask.Bound mask, float weight) {
+        validateLayer(delta, mask, weight);
+
+        Quaternionf weightedRotation = new Quaternionf();
+        for (int i = 0; i < skeleton.boneCount(); i++) {
+            float alpha = weight * mask.weight(i);
+            if (alpha <= 0.0f)
+                continue;
+
+            translations[i].fma(alpha, delta.translations[i]);
+            weightedRotation.identity().slerp(delta.rotations[i], alpha);
+            rotations[i].mul(weightedRotation).normalize();
+
+            Vector3f scale = delta.scales[i];
+            scales[i].mul(1.0f + (scale.x() - 1.0f) * alpha, 1.0f + (scale.y() - 1.0f) * alpha, 1.0f + (scale.z() - 1.0f) * alpha);
+        }
+
+        dirty = true;
+    }
+
+    private void validateLayer(SkeletonPose other, BoneMask.Bound mask, float weight) {
+        if (other == this)
+            throw new IllegalArgumentException("Layer pose must be separate");
+
+        if (other.skeleton != skeleton || mask.skeleton() != skeleton)
+            throw new IllegalArgumentException("Skeleton mismatch");
+
+        if (!Float.isFinite(weight) || weight < 0.0f || weight > 1.0f)
+            throw new IllegalArgumentException("Invalid layer weight");
     }
 }
