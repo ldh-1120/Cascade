@@ -5,6 +5,7 @@ import com.google.gson.JsonParser;
 import com.mojang.logging.LogUtils;
 import dev.dh.cascade.bedrock.BedrockGeometry;
 import dev.dh.cascade.bedrock.BedrockGeometryParser;
+import dev.dh.cascade.model.Skeleton;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.packs.resources.Resource;
 import net.minecraft.server.packs.resources.ResourceManager;
@@ -13,6 +14,7 @@ import net.minecraft.util.profiling.ProfilerFiller;
 import org.slf4j.Logger;
 
 import java.io.Reader;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -27,6 +29,7 @@ public final class BedrockGeometryLoader extends SimplePreparableReloadListener<
     private static final String SUFFIX = ".geo.json";
 
     private volatile Map<ResourceLocation, List<BedrockGeometry>> geometries = Map.of();
+    private volatile Map<ResourceLocation, List<Skeleton>> skeletons = Map.of();
 
     @Override
     protected Map<ResourceLocation, List<BedrockGeometry>> prepare(ResourceManager manager, ProfilerFiller profiler) {
@@ -41,7 +44,12 @@ public final class BedrockGeometryLoader extends SimplePreparableReloadListener<
                 String name = path.substring(PREFIX.length(), path.length() - SUFFIX.length());
 
                 ResourceLocation id = ResourceLocation.fromNamespaceAndPath(file.getNamespace(), name);
-                results.put(id, BedrockGeometryParser.parse(json));
+                List<BedrockGeometry> models = BedrockGeometryParser.parse(json);
+
+                for (BedrockGeometry geometry : models)
+                    new Skeleton(geometry);
+
+                results.put(id, models);
             } catch (Exception exception) {
                 LOGGER.error("Failed to load Bedrock geometry: {}", file, exception);
             }
@@ -52,21 +60,30 @@ public final class BedrockGeometryLoader extends SimplePreparableReloadListener<
 
     @Override
     protected void apply(Map<ResourceLocation, List<BedrockGeometry>> result, ResourceManager manager, ProfilerFiller profiler) {
-        geometries = result;
-        LOGGER.info("Loaded {} Bedrock geometry files", result.size());
-
+        Map<ResourceLocation, List<Skeleton>> compiled = new HashMap<>();
         for (Map.Entry<ResourceLocation, List<BedrockGeometry>> entry : result.entrySet()) {
+            List<Skeleton> models = new ArrayList<>();
             for (BedrockGeometry geometry : entry.getValue()) {
-                int cubeCount = 0;
-                for (BedrockGeometry.Bone bone : geometry.bones())
-                    cubeCount += bone.cubes().size();
+                Skeleton skeleton = new Skeleton(geometry);
+                models.add(skeleton);
 
-                LOGGER.info("Geometry {} ({}) - {} bones, {} cubes", entry.getKey(), geometry.identifier(), geometry.bones().size(), cubeCount);
+                LOGGER.info("Skeleton {} ({}) loaded: {} bones", entry.getKey(), geometry.identifier(), skeleton.boneCount());
             }
+
+            compiled.put(entry.getKey(), List.copyOf(models));
         }
+
+        geometries = result;
+        skeletons = Map.copyOf(compiled);
+
+        LOGGER.info("Loaded {} Bedrock geometry files", result.size());
     }
 
     public List<BedrockGeometry> get(ResourceLocation id) {
         return geometries.getOrDefault(id, List.of());
+    }
+
+    public List<Skeleton> getSkeletons(ResourceLocation id) {
+        return skeletons.getOrDefault(id, List.of());
     }
 }
