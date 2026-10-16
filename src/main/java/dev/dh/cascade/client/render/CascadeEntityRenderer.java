@@ -53,6 +53,7 @@ public class CascadeEntityRenderer<T extends Entity & MotionEntity> extends Enti
         if (model != null) {
             double nowTick = entity.tickCount + (double) partialTick;
             blender.apply(entity.motion().player().sampleFrame(nowTick), entity.motion().layers(), nowTick, clips, pose);
+            modifyPose(entity, partialTick, pose);
 
             stack.pushPose();
 
@@ -68,6 +69,8 @@ public class CascadeEntityRenderer<T extends Entity & MotionEntity> extends Enti
 
         super.render(entity, entityYaw, partialTick, stack, buffers, packedLight);
     }
+
+    protected void modifyPose(T entity, float partialTick, SkeletonPose pose) { }
 
     private void updateResources() {
         BedrockGeometryLoader geometryLoader = BedrockGeometryLoader.INSTANCE;
