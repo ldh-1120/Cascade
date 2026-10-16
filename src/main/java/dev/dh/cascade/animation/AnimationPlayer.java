@@ -5,43 +5,49 @@ import dev.dh.cascade.bedrock.BedrockAnimation;
 import java.util.Objects;
 
 public class AnimationPlayer {
-    private static final float TICKS_PER_SECOND = 20.0f;
+    private static final double TICKS_PER_SECOND = 20.0f;
+
+    public sealed interface PoseNode permits ClipNode, BlendNode { }
+    public record ClipNode(String animation, double startPlaybackSeconds) implements PoseNode { }
+    public record BlendNode(PoseNode from, PoseNode to, double startTransitionSeconds, double durationSeconds) implements PoseNode { }
+    public record Frame(PoseNode root, double playbackSeconds, double transitionSeconds) { }
+
+    private PoseNode root;
 
     private String currentAnimation;
-    private String previousAnimation;
+    private double currentStartSeconds;
 
-    private float anchorTick;
-    private float currentSeconds;
-    private float previousSeconds;
-
-    private float blendSeconds;
-    private float blendDurationSeconds;
+    private double anchorTick;
+    private double playbackClock;
+    private double transitionClock;
 
     private float speed = 1.0f;
     private boolean paused;
 
-    public void play(String name, float nowTick) {
+    public void play(String name, double nowTick) {
         validateName(name);
         validateTick(nowTick);
 
-        currentAnimation = name;
-        previousAnimation = null;
+        if (!isPlaying()) {
+            playbackClock = 0.0;
+            transitionClock = 0.0;
+            anchorTick = nowTick;
+        } else
+            rebase(nowTick);
 
-        anchorTick = nowTick;
-        currentSeconds = 0.0f;
-        previousSeconds = 0.0f;
-
-        blendSeconds = 0.0f;
-        blendDurationSeconds = 0.0f;
         paused = false;
+
+        currentAnimation = name;
+        currentStartSeconds = playbackClock;
+        root = new ClipNode(name, playbackClock);
     }
 
-    public void playIfChanged(String name, float nowTick) {
+    public void playIfChanged(String name, double nowTick) {
         if (!Objects.equals(currentAnimation, name))
             play(name, nowTick);
     }
 
-    public void crossFade(String name, float nowTick, float durationSeconds) {
+    public void crossFade(String name, double nowTick, float durationSeconds) {
         validateName(name);
         validateTick(nowTick);
 
@@ -58,30 +64,30 @@ public class AnimationPlayer {
 
         rebase(nowTick);
 
-        previousAnimation = currentAnimation;
-        previousSeconds = currentSeconds;
+        root = prune(root, transitionClock);
+
+        ClipNode target = new ClipNode(name, playbackClock);
+        root = new BlendNode(root, target, transitionClock, durationSeconds);
 
         currentAnimation = name;
-        currentSeconds = 0.0f;
-
-        blendSeconds = 0.0f;
-        blendDurationSeconds = durationSeconds;
-        anchorTick = nowTick;
+        currentStartSeconds = playbackClock;
     }
 
     public void stop() {
+        root = null;
         currentAnimation = null;
-        previousAnimation = null;
+        currentStartSeconds = 0.0;
 
-        currentSeconds = 0.0f;
-        previousSeconds = 0.0f;
+        playbackClock = 0.0;
+        transitionClock = 0.0;
+        anchorTick = 0.0;
 
-        blendSeconds = 0.0f;
-        blendDurationSeconds = 0.0f;
         paused = false;
     }
 
-    public void pause(float nowTick) {
+    public void pause(double nowTick) {
+        validateTick(nowTick);
+
         if (!isPlaying() || paused)
             return;
 
@@ -89,7 +95,7 @@ public class AnimationPlayer {
         paused = true;
     }
 
-    public void resume(float nowTick) {
+    public void resume(double nowTick) {
         validateTick(nowTick);
 
         if (!isPlaying() || !paused)
@@ -99,7 +105,7 @@ public class AnimationPlayer {
         paused = false;
     }
 
-    public void setSpeed(float newSpeed, float nowTick) {
+    public void setSpeed(float newSpeed, double nowTick) {
         validateTick(nowTick);
 
         if (!Float.isFinite(newSpeed) || newSpeed < 0.0f)
@@ -111,36 +117,25 @@ public class AnimationPlayer {
         speed = newSpeed;
     }
 
-    public float getTimeSeconds(float nowTick) {
+    public float getTimeSeconds(double nowTick) {
         validateTick(nowTick);
 
         if (!isPlaying())
             return 0.0f;
 
-        return currentSeconds + deltaSeconds(nowTick) * speed;
+        return (float) Math.max(0.0, playbackTime(nowTick) - currentStartSeconds);
     }
 
-    public Frame sampleFrame(float nowTick) {
+    public Frame sampleFrame(double nowTick) {
         validateTick(nowTick);
 
         if (!isPlaying())
-            return new Frame(null, 0.0f, null, 0.0f, 1.0f);
+            return new Frame(null, 0.0, 0.0);
 
-        float delta = deltaSeconds(nowTick);
-        float currentTime = currentSeconds + delta * speed;
-        if (previousAnimation == null)
-            return new Frame(currentAnimation, currentTime, null, 0.0f, 1.0f);
-
-        float progress = (blendSeconds + delta) / blendDurationSeconds;
-        if (progress >= 1.0f)
-            return new Frame(currentAnimation, currentTime, null, 0.0f, 1.0f);
-
-        float previousTime = previousSeconds + delta * speed;
-
-        return new Frame(currentAnimation, currentTime, previousAnimation, previousTime, Math.max(0.0f, progress));
+        return new Frame(root, playbackTime(nowTick), transitionTime(nowTick));
     }
 
-    public boolean isFinished(AnimationClip clip, float nowTick) {
+    public boolean isFinished(AnimationClip clip, double nowTick) {
         if (!isPlaying() || clip == null)
             return false;
 
@@ -166,28 +161,46 @@ public class AnimationPlayer {
         return speed;
     }
 
-    private void rebase(float nowTick) {
-        validateTick(nowTick);
+    private void rebase(double nowTick) {
+        double delta = deltaSeconds(nowTick);
 
-        float delta = deltaSeconds(nowTick);
-        currentSeconds += delta * speed;
-
-        if (previousAnimation != null) {
-            previousSeconds += delta * speed;
-            blendSeconds += delta;
-
-            if (blendSeconds >= blendDurationSeconds)
-                previousAnimation = null;
-        }
+        playbackClock += delta * speed;
+        transitionClock += delta;
 
         anchorTick = nowTick;
     }
 
-    private float deltaSeconds(float nowTick) {
-        if (paused)
-            return 0.0f;
+    private double playbackTime(double nowTick) {
+        return playbackClock + deltaSeconds(nowTick) * speed;
+    }
 
-        return Math.max(0.0f, nowTick - anchorTick) / TICKS_PER_SECOND;
+    private double transitionTime(double nowTick) {
+        return transitionClock + deltaSeconds(nowTick);
+    }
+
+    private double deltaSeconds(double nowTick) {
+        if (paused)
+            return 0.0;
+
+        return Math.max(0.0, nowTick - anchorTick) / TICKS_PER_SECOND;
+    }
+
+    private static PoseNode prune(PoseNode node, double nowSeconds) {
+        if (node instanceof ClipNode)
+            return node;
+
+        BlendNode blend = (BlendNode) node;
+
+        double elapsed = nowSeconds - blend.startTransitionSeconds();
+        if (elapsed >= blend.durationSeconds())
+            return prune(blend.to(), nowSeconds);
+
+        PoseNode from = prune(blend.from(), nowSeconds);
+        PoseNode to = prune(blend.to(), nowSeconds);
+        if (from == blend.from() && to == blend.to())
+            return blend;
+
+        return new BlendNode(from, to, blend.startTransitionSeconds(), blend.durationSeconds());
     }
 
     private static void validateName(String name) {
@@ -197,10 +210,8 @@ public class AnimationPlayer {
             throw new IllegalArgumentException("Animation name cannot be empty");
     }
 
-    private static void validateTick(float nowTick) {
-        if (!Float.isFinite(nowTick))
+    private static void validateTick(double tick) {
+        if (!Double.isFinite(tick))
             throw new IllegalArgumentException("Invalid game tick");
     }
-
-    public record Frame(String currentAnimation, float currentTime, String previousAnimation, float previousTime, float blendWeight) { }
 }

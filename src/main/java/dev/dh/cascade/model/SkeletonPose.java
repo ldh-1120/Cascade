@@ -139,4 +139,8 @@ public final class SkeletonPose {
 
         dirty = false;
     }
+
+    public Skeleton skeleton() {
+        return skeleton;
+    }
 }
